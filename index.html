@@ -11,7 +11,7 @@
             let allData = [];
 
             while (true) {
-                const url = `https://lol.fandom.com/api.php?action=cargoquery&tables=ScoreboardPlayers&fields=Name,PlayerWin,GameId,Team,TeamVs,DateTime_UTC&where=Name%20LIKE%20'%25${encodeURIComponent(playerName)}%25'&limit=${limit}&format=json&origin=*&offset=${offset}`;
+                const url = `https://lol.fandom.com/api.php?action=cargoquery&tables=ScoreboardPlayers&fields=Name,PlayerWin,GameId,Team,TeamVs,DateTime_UTC&where=Name%20LIKE%20'${encodeURIComponent(playerName)}'&limit=${limit}&format=json&origin=*&offset=${offset}`;
 
                 try {
                     const response = await fetch(url);
