@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consulta API con Offset</title>
+    <script>
+        async function fetchData(playerName, teamVs) {
+            const limit = 500;
+            let offset = 0;
+            let allData = [];
+
+            while (true) {
+                const url = `https://lol.fandom.com/api.php?action=cargoquery&tables=ScoreboardPlayers&fields=Name,PlayerWin,GameId,Team,TeamVs,DateTime_UTC&where=Name%20LIKE%20'%25${encodeURIComponent(playerName)}%25'&limit=${limit}&format=json&origin=*&offset=${offset}`;
+
+                try {
+                    const response = await fetch(url);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+
+                    console.log("Datos obtenidos:", data);
+
+                    if (data.cargoquery.length === 0) {
+                        break;
+                    }
+
+                    const currentBatch = data.cargoquery.map(item => item.title);
+                    allData = allData.concat(currentBatch);
+
+                    if (currentBatch.length < limit) {
+                        break;
+                    }
+
+                    offset += limit;
+                } catch (error) {
+                    console.error(`Error fetching data: ${error.message}`);
+                    break;
+                }
+            }
+
+            const filteredData = allData.filter(item => item.TeamVs === teamVs);
+
+            // Ordenar los datos por "DateTime UTC"
+            filteredData.sort((a, b) => new Date(a["DateTime UTC"]) - new Date(b["DateTime UTC"]));
+
+            displayData(filteredData);
+        }
+
+        function displayData(data) {
+            const resultDiv = document.getElementById("results");
+            resultDiv.innerHTML = "";
+
+            if (data.length === 0) {
+                resultDiv.innerHTML = "<p>No se encontraron resultados.</p>";
+                return;
+            }
+
+            // Resumen de PlayerWin
+            const playerWinYes = data.filter(item => item.PlayerWin === "Yes").length;
+            const playerWinNo = data.filter(item => item.PlayerWin === "No").length;
+
+            const summary = document.createElement("p");
+            summary.innerHTML = `Resumen: <br> PlayerWin = "Yes": ${playerWinYes} <br> PlayerWin = "No": ${playerWinNo}`;
+            resultDiv.appendChild(summary);
+
+            // Crear la tabla
+            const table = document.createElement("table");
+            table.border = "1";
+
+            const headerRow = table.insertRow();
+            ["Name", "PlayerWin", "GameId", "Team", "TeamVs", "DateTime UTC"].forEach(header => {
+                const cell = headerRow.insertCell();
+                cell.textContent = header;
+            });
+
+            data.forEach(item => {
+                const row = table.insertRow();
+                ["Name", "PlayerWin", "GameId", "Team", "TeamVs", "DateTime UTC"].forEach(key => {
+                    const cell = row.insertCell();
+                    cell.textContent = item[key] !== undefined && item[key] !== null ? item[key] : "N/A";
+                });
+            });
+
+            resultDiv.appendChild(table);
+        }
+
+        function handleSearch() {
+            const playerName = document.getElementById("playerName").value.trim();
+            const teamVs = document.getElementById("teamVs").value.trim();
+
+            if (!playerName || !teamVs) {
+                alert("Por favor, ingresa tanto el nombre del jugador como el equipo contrario.");
+                return;
+            }
+
+            fetchData(playerName, teamVs);
+        }
+    </script>
+</head>
+<body>
+    <h1>Consulta API de Scoreboard Players</h1>
+    <div>
+        <label for="playerName">Nombre del jugador:</label>
+        <input type="text" id="playerName" placeholder="Ingresa el nombre">
+    </div>
+    <div>
+        <label for="teamVs">TeamVs:</label>
+        <input type="text" id="teamVs" placeholder="Ingresa el equipo contrario">
+    </div>
+    <button onclick="handleSearch()">Buscar</button>
+
+    <div id="results"></div>
+</body>
+</html>
