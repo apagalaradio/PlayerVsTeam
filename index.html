@@ -1,186 +1,252 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PlayerVsTeam</title>
-    <style>
-        .win-row {
-            background-color: #d0f0c0; /* light green */
-        }
+  <meta charset="UTF-8" />
+  <title>PlayerVsTeam</title>
+  <style>
+    body { font-family: Arial, sans-serif; }
+    .win-row { background-color: #d0f0c0; }
+    th {
+      cursor: pointer;
+      background-color: #f0f0f0;
+    }
+    th:hover { background-color: #e0e0e0; }
 
-        th {
-            cursor: pointer;
-            background-color: #f0f0f0;
-        }
+    .multiselect {
+      position: relative;
+      display: inline-block;
+      width: 300px;
+    }
 
-        th:hover {
-            background-color: #e0e0e0;
-        }
-    </style>
+    .selectBox {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border: 1px solid #ccc;
+      padding: 8px;
+      background-color: white;
+      cursor: pointer;
+    }
+
+    .selectBox:after {
+      content: '▾';
+      margin-left: 8px;
+    }
+
+    .checkboxes {
+      display: none;
+      border: 1px solid #ccc;
+      position: absolute;
+      background-color: white;
+      z-index: 1;
+      width: 100%;
+      max-height: 250px;
+      overflow-y: auto;
+    }
+
+    .checkboxes label {
+      display: block;
+      padding: 5px;
+    }
+
+    .checkboxes label:hover {
+      background-color: #f0f0f0;
+    }
+
+    .checkboxes .select-all {
+      font-weight: bold;
+      border-bottom: 1px solid #ccc;
+    }
+  </style>
 </head>
 <body>
-    <h1>PlayerVsTeam</h1>
-    <div>
-        <label for="playerName">Player Name:</label>
-        <input type="text" id="playerName" placeholder="Enter player name">
-    </div>
-    <div>
-        <label for="teamVs">Opponent Team:</label>
-        <input type="text" id="teamVs" placeholder="Enter opponent team">
-    </div>
+  <h1>PlayerVsTeam</h1>
+  <div>
+    <label for="playerName">Player Name:</label>
+    <input type="text" id="playerName" placeholder="Enter player name" />
     <button onclick="handleSearch()">Search</button>
+  </div>
+  <br />
+  <div>
+    <label>Opponent Teams:</label>
+    <div class="multiselect">
+      <div class="selectBox" onclick="toggleCheckboxes()">Select teams</div>
+      <div class="checkboxes" id="checkboxes"></div>
+    </div>
+  </div>
+  <br />
+  <div id="results"></div>
 
-    <div id="results"></div>
+  <script>
+    let globalData = [];
+    let checkboxVisible = false;
 
-    <script>
-        let globalData = [];
+    function toggleCheckboxes() {
+      const checkboxes = document.getElementById("checkboxes");
+      checkboxes.style.display = checkboxVisible ? "none" : "block";
+      checkboxVisible = !checkboxVisible;
+    }
 
-        async function fetchData(playerName, teamVs) {
-            const limit = 500;
-            let offset = 0;
-            let allData = [];
+    function handleSearch() {
+      const playerName = document.getElementById("playerName").value.trim();
+      if (!playerName) {
+        alert("Please enter a player name.");
+        return;
+      }
+      fetchData(playerName);
+    }
 
-            while (true) {
-                const url = `https://lol.fandom.com/api.php?action=cargoquery&tables=ScoreboardPlayers&fields=Name,PlayerWin,GameId,Team,TeamVs,DateTime_UTC&where=Name%20LIKE%20'${encodeURIComponent(playerName)}'&limit=${limit}&format=json&origin=*&offset=${offset}`;
+    async function fetchData(playerName) {
+      const limit = 500;
+      let offset = 0;
+      let allData = [];
 
-                try {
-                    const response = await fetch(url);
-                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      while (true) {
+        const url = `https://lol.fandom.com/api.php?action=cargoquery&tables=ScoreboardPlayers&fields=Name,PlayerWin,GameId,Team,TeamVs,DateTime_UTC&where=Name%20LIKE%20'${encodeURIComponent(playerName)}'&limit=${limit}&format=json&origin=*&offset=${offset}`;
+        try {
+          const response = await fetch(url);
+          const data = await response.json();
+          if (data.cargoquery.length === 0) break;
 
-                    const data = await response.json();
-                    if (data.cargoquery.length === 0) break;
+          const currentBatch = data.cargoquery.map(item => item.title);
+          allData = allData.concat(currentBatch);
+          if (currentBatch.length < limit) break;
+          offset += limit;
+        } catch (error) {
+          console.error("Error:", error);
+          break;
+        }
+      }
 
-                    const currentBatch = data.cargoquery.map(item => item.title);
-                    allData = allData.concat(currentBatch);
-                    if (currentBatch.length < limit) break;
+      globalData = allData.map(item => ({
+        ...item,
+        Win: item.PlayerWin === "Yes" ? "YES" : "NO"
+      }));
 
-                    offset += limit;
-                } catch (error) {
-                    console.error(`Error fetching data: ${error.message}`);
-                    break;
-                }
-            }
+      buildCheckboxes(globalData);
+      displayData(globalData);
+    }
 
-            const filteredData = allData.filter(item => item.TeamVs === teamVs);
+    function buildCheckboxes(data) {
+      const teams = [...new Set(data.map(d => d.TeamVs))].sort();
+      const container = document.getElementById("checkboxes");
+      container.innerHTML = "";
 
-            // Sort by DateTime UTC
-            filteredData.sort((a, b) => new Date(a["DateTime UTC"]) - new Date(b["DateTime UTC"]));
+      const selectAllLabel = document.createElement("label");
+      selectAllLabel.classList.add("select-all");
+      const selectAllCheckbox = document.createElement("input");
+      selectAllCheckbox.type = "checkbox";
+      selectAllCheckbox.checked = true;
+      selectAllCheckbox.onclick = function () {
+        const allCheckboxes = container.querySelectorAll("input[type='checkbox']:not(.select-all-checkbox)");
+        allCheckboxes.forEach(cb => cb.checked = this.checked);
+        displayData(filterData());
+      };
+      selectAllLabel.appendChild(selectAllCheckbox);
+      selectAllLabel.appendChild(document.createTextNode(" Select/Deselect All"));
+      container.appendChild(selectAllLabel);
 
-            // Update values
-            filteredData.forEach(item => {
-                if (item.PlayerWin === "Yes") {
-                    item.PlayerWin = "Win";
-                    item.PlayerLose = "";
-                } else if (item.PlayerWin === "No") {
-                    item.PlayerLose = "Lose";
-                    item.PlayerWin = "";
-                } else {
-                    item.PlayerLose = "";
-                }
-            });
+      teams.forEach(team => {
+        const label = document.createElement("label");
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.classList.add("team-checkbox");
+        checkbox.value = team;
+        checkbox.checked = true;
+        checkbox.onclick = () => displayData(filterData());
+        label.appendChild(checkbox);
+        label.appendChild(document.createTextNode(" " + team));
+        container.appendChild(label);
+      });
+    }
 
-            globalData = filteredData; // Save for sorting
-            displayData(filteredData);
+    function filterData() {
+      const selected = Array.from(document.querySelectorAll(".team-checkbox:checked")).map(cb => cb.value);
+      if (selected.length === 0) return [];
+      return globalData.filter(item => selected.includes(item.TeamVs));
+    }
+
+    function displayData(data) {
+      const resultDiv = document.getElementById("results");
+      resultDiv.innerHTML = "";
+
+      if (data.length === 0) {
+        resultDiv.innerHTML = "<p>No results found.</p>";
+        return;
+      }
+
+      const wins = data.filter(d => d.Win === "YES").length;
+      const losses = data.filter(d => d.Win === "NO").length;
+
+      const summary = document.createElement("p");
+      summary.innerHTML = `Summary:<br>PlayerWin = ${wins}<br>PlayerLose = ${losses}`;
+      resultDiv.appendChild(summary);
+
+      const table = document.createElement("table");
+      table.border = "1";
+
+      const headers = ["No.", "DateTime UTC", "GameId", "Team", "TeamVs", "Win", "Name"];
+      const thead = table.createTHead();
+      const row = thead.insertRow();
+
+      headers.forEach((header, i) => {
+        const th = document.createElement("th");
+        th.textContent = header;
+        th.onclick = () => sortTableByColumn(i);
+        row.appendChild(th);
+      });
+
+      const tbody = table.createTBody();
+      data.forEach((item, index) => {
+        const row = tbody.insertRow();
+        if (item.Win === "YES") row.classList.add("win-row");
+
+        const rowData = [
+          index + 1,
+          item["DateTime UTC"],
+          item.GameId,
+          item.Team,
+          item.TeamVs,
+          item.Win,
+          item.Name
+        ];
+
+        rowData.forEach(cell => {
+          const td = row.insertCell();
+          td.textContent = cell || "N/A";
+        });
+      });
+
+      resultDiv.appendChild(table);
+    }
+
+    let sortOrder = {};
+    function sortTableByColumn(index) {
+      const headers = ["No.", "DateTime UTC", "GameId", "Team", "TeamVs", "Win", "Name"];
+      const key = headers[index];
+      const isAsc = !sortOrder[key];
+      sortOrder = { [key]: isAsc };
+
+      const sorted = [...filterData()].sort((a, b) => {
+        const valA = getSortValue(a, key, index);
+        const valB = getSortValue(b, key, index);
+
+        if (key === "DateTime UTC") {
+          return isAsc ? new Date(valA) - new Date(valB) : new Date(valB) - new Date(valA);
         }
 
-        function displayData(data) {
-            const resultDiv = document.getElementById("results");
-            resultDiv.innerHTML = "";
+        return isAsc
+          ? valA.toString().localeCompare(valB.toString())
+          : valB.toString().localeCompare(valA.toString());
+      });
 
-            if (data.length === 0) {
-                resultDiv.innerHTML = "<p>No results found.</p>";
-                return;
-            }
+      displayData(sorted);
+    }
 
-            // Summary
-            const playerWin = data.filter(item => item.PlayerWin === "Win").length;
-            const playerLose = data.filter(item => item.PlayerLose === "Lose").length;
-
-            const summary = document.createElement("p");
-            summary.innerHTML = `Summary:<br>PlayerWin = ${playerWin}<br>PlayerLose = ${playerLose}`;
-            resultDiv.appendChild(summary);
-
-            // Table
-            const table = document.createElement("table");
-            table.border = "1";
-
-            const headers = ["No.", "DateTime UTC", "GameId", "Team", "TeamVs", "PlayerWin", "PlayerLose", "Name"];
-            const headerRow = table.createTHead().insertRow();
-
-            headers.forEach((header, index) => {
-                const th = document.createElement("th");
-                th.textContent = header;
-                th.onclick = () => sortTableByColumn(index);
-                headerRow.appendChild(th);
-            });
-
-            const tbody = table.createTBody();
-
-            data.forEach((item, index) => {
-                const row = tbody.insertRow();
-                if (item.PlayerWin === "Win") row.classList.add("win-row");
-
-                const rowData = [
-                    index + 1,
-                    item["DateTime UTC"],
-                    item.GameId,
-                    item.Team,
-                    item.TeamVs,
-                    item.PlayerWin,
-                    item.PlayerLose,
-                    item.Name
-                ];
-
-                rowData.forEach(cellData => {
-                    const cell = row.insertCell();
-                    cell.textContent = cellData !== undefined && cellData !== null ? cellData : "N/A";
-                });
-            });
-
-            resultDiv.appendChild(table);
-        }
-
-        let sortOrder = {};
-
-        function sortTableByColumn(columnIndex) {
-            const headers = ["No.", "DateTime UTC", "GameId", "Team", "TeamVs", "PlayerWin", "PlayerLose", "Name"];
-            const key = headers[columnIndex];
-            const isAsc = !sortOrder[key];
-            sortOrder = { [key]: isAsc };
-
-            const sortedData = [...globalData].sort((a, b) => {
-                const aVal = columnIndex === 0 ? globalData.indexOf(a) + 1 : getValueForKey(a, key);
-                const bVal = columnIndex === 0 ? globalData.indexOf(b) + 1 : getValueForKey(b, key);
-
-                if (key === "DateTime UTC") {
-                    return isAsc ? new Date(aVal) - new Date(bVal) : new Date(bVal) - new Date(aVal);
-                }
-
-                return isAsc
-                    ? aVal.toString().localeCompare(bVal.toString())
-                    : bVal.toString().localeCompare(aVal.toString());
-            });
-
-            displayData(sortedData);
-        }
-
-        function getValueForKey(item, key) {
-            if (key === "No.") return globalData.indexOf(item) + 1;
-            return item[key] || "";
-        }
-
-        function handleSearch() {
-            const playerName = document.getElementById("playerName").value.trim();
-            const teamVs = document.getElementById("teamVs").value.trim();
-
-            if (!playerName || !teamVs) {
-                alert("Please enter both the player's name and the opponent team.");
-                return;
-            }
-
-            fetchData(playerName, teamVs);
-        }
-    </script>
+    function getSortValue(item, key, index) {
+      if (key === "No.") return globalData.indexOf(item) + 1;
+      return item[key] || "";
+    }
+  </script>
 </body>
 </html>
